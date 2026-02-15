@@ -41,13 +41,15 @@ object MorsePlayer:
     val digits = params.contains("DIGITS")
     val punctuation = params.contains("PUNCT")
     val quiz = params.contains("QUIZ")
+    val sampleRate = params.getOrElse("SAMPLERATE", 44100.0).asInstanceOf[Double]
     val mixerName = params.get("MIXER").asInstanceOf[Option[String]]
     val consoleReader = new ConsoleReader()
     val mixerInfos = AudioSystem.getMixerInfo
     val mixerInfo = mixerName.flatMap(nm => mixerInfos.find(p => p.getName == nm))
       .orElse(mixerInfos.find(mi => mi.getName.contains("[default]")))
+    val verboseFlag = params.contains("VERBOSE")
     val showVersion = params.contains("VERSION")
-    val morsePlayer = new MorsePlayer(1.0, tone, if (rate > charRate) rate else charRate, rate, mixerInfo)
+    val morsePlayer = new MorsePlayer(1.0, tone, if (rate > charRate) rate else charRate, rate, sampleRate, mixerInfo)
 
     if (showVersion)
       val pkg = getClass.getClassLoader.getDefinedPackage("us.keatley.morse")
@@ -75,6 +77,10 @@ object MorsePlayer:
 
         if (quiz)
           var score = 0
+          val statusColumn = wordList.map(_.length).max + 6
+
+          if (verboseFlag)
+            println(s"Word rate: ${rate} wpm, Character rate: ${charRate} wpm")
 
           for
             (word, n) <- wordList.zipWithIndex
@@ -83,8 +89,7 @@ object MorsePlayer:
             Await.ready(morsePlayer.completed(), Duration.Inf)
             val prompt = s"${n + 1}: "
             val input = consoleReader.readLine(prompt)
-            val column = prompt.length + word.length + 1
-            consoleReader.getOutput.write(s"\u001b[A\u001b[${column}G   \u001b[K")
+            consoleReader.getOutput.write(s"\u001b[A\u001b[${statusColumn}G   \u001b[K")
             if (input.compareToIgnoreCase(word) == 0)
               consoleReader.getOutput.write(s"${Console.GREEN}Correct!${Console.RESET}")
               score += 1
@@ -107,32 +112,36 @@ object MorsePlayer:
   @tailrec
   private def parseArgs(args: List[String], accum: Map[String,Any] = Map.empty): Map[String,Any] =
     args match
-      case ("-m"|"--minlength") :: min :: rest =>
+      case ("-m" | "--minlength") :: min :: rest =>
         parseArgs(rest, accum + ("MIN" -> min.toInt))
-      case ("-M"|"--maxlength") :: max :: rest =>
+      case ("-M" | "--maxlength") :: max :: rest =>
         parseArgs(rest, accum + ("MAX" -> max.toInt))
-      case ("-t"|"--tone") :: tone :: rest =>
+      case ("-t" | "--tone") :: tone :: rest =>
         parseArgs(rest, accum + ("TONE" -> tone.toDouble))
-      case ("-C"|"--charrate") :: wpm :: rest =>
+      case ("-C" | "--charrate") :: wpm :: rest =>
         parseArgs(rest, accum + ("CHARRATE" -> wpm.toDouble))
-      case ("-r"|"--rate") :: rate :: rest =>
+      case ("-r" | "--rate") :: rate :: rest =>
         parseArgs(rest, accum + ("RATE" -> rate.toDouble))
-      case ("-c"|"--count") :: count :: rest =>
+      case ("-c" | "--count") :: count :: rest =>
         parseArgs(rest, accum + ("COUNT" -> count.toInt))
-      case ("-R"|"--random") :: rest =>
+      case ("-R" | "--random") :: rest =>
         parseArgs(rest, accum + ("RANDOM" -> true))
-      case ("-l"|"--letters") :: rest =>
+      case ("-l" | "--letters") :: rest =>
         parseArgs(rest, accum + ("LETTERS" -> true))
-      case ("-D"|"--digits") :: rest =>
+      case ("-D" | "--digits") :: rest =>
         parseArgs(rest, accum + ("DIGITS" -> true))
-      case ("-p"|"--punctuation") :: rest =>
+      case ("-p" | "--punctuation") :: rest =>
         parseArgs(rest, accum + ("PUNCT" -> true))
-      case ("-q"|"--quiz") :: rest =>
+      case ("-q" | "--quiz") :: rest =>
         parseArgs(rest, accum + ("QUIZ" -> true))
-      case ("-f"|"--file") :: file :: rest =>
+      case ("-f" | "--file") :: file :: rest =>
         parseArgs(rest, accum + ("FILE" -> file))
-      case ("-x"|"--mixer") :: mixer :: rest =>
+      case ("-s" | "--samplerate") :: sampleRate :: rest =>
+        parseArgs(rest, accum + ("SAMPLERATE" -> sampleRate.toDouble))
+      case ("-x" | "--mixer") :: mixer :: rest =>
         parseArgs(rest, accum + ("MIXER" -> mixer))
+      case "--verbose" :: rest =>
+        parseArgs(rest, accum + ("VERBOSE" -> true))
       case "--version" :: rest =>
         parseArgs(rest, accum + ("VERSION" -> true))
       case "--help" :: rest =>
@@ -149,27 +158,38 @@ object MorsePlayer:
         |Usage:
         |   morse-player [options]
         |Where [options] include:
-        |   -m|--minlength <minLength> - The minimum length of words.
-        |   -M|--maxlength <maxLength> - The maximum length of words.
-        |   -t|--tone <tone>           - The frequency of the tone, in hertz [800].
-        |   -C|--charrate <wpm>        - The rate of each morse character, in words/minute [18].
-        |   -r|--rate <wpm>            - The rate, in words/minute [13].
-        |   -c|--count <count>         - The number of words to quiz.
-        |   -R|--random                - Use randomly-generated words [default: dictionary].
-        |   -l|--letters               - Use letters [true].
-        |   -D|--digits                - Include digits in the random words [false].
-        |   -p|--punctuation           - Include punctuation in the random words [false].
-        |   -q|--quiz                  - Present a quiz.
-        |   -f|--file <file>           - Input file, '-' for stdin.
-        |   -x|--mixer <mixer-name>    - The name of the mixer to use.
-        |   --version                  - Display the app version.
-        |   --help                     - This help text.""".stripMargin)
+        |   -m | --minlength <minLength> - The minimum length of words.
+        |   -M | --maxlength <maxLength> - The maximum length of words.
+        |   -t | --tone <tone>           - The frequency of the tone, in hertz [800].
+        |   -C | --charrate <wpm>        - The rate of each morse character, in words/minute [18].
+        |   -r | --rate <wpm>            - The rate, in words/minute [13].
+        |   -c | --count <count>         - The number of words to quiz.
+        |   -R | --random                - Use randomly-generated words [default: dictionary].
+        |   -l | --letters               - Use letters [true].
+        |   -D | --digits                - Include digits in the random words [false].
+        |   -p | --punctuation           - Include punctuation in the random words [false].
+        |   -q | --quiz                  - Present a quiz.
+        |   -f | --file <file>           - Input file, '-' for stdin.
+        |   -s | --samplerate <srate>    - Sample rate [44100.0]
+        |   -x | --mixer <mixer-name>    - The name of the mixer to use.
+        |   --verbose                    - Show more details.
+        |   --version                    - Display the app version.
+        |   --help                       - This help text.""".stripMargin)
     sys.exit(1)
 
-class MorsePlayer(amplitude: Double, frequency: Double, charRate: Double, rate: Double, mixer: Option[Mixer.Info] = None)
+/**
+  * Creates a MorsePlayer.
+  * @param amplitude The amplitude of the waveform, above and below 0
+  * @param frequency The frequency in Hertz
+  * @param charRate The rate of each individual character (words/minute)
+  * @param rate The overall rate of Morse characters (words/minute)
+  * @param sampleRate The sample rate of the digital audio
+  * @param mixer The mixer to play the audio through
+  */
+class MorsePlayer(amplitude: Double, frequency: Double, charRate: Double, rate: Double, sampleRate: Double, mixer: Option[Mixer.Info] = None)
     extends LineListener:
   private var promise: Promise[MorsePlayer] = Promise[MorsePlayer]
-  private val clipFactory = new ClipFactory(amplitude, frequency, charRate, rate, 0.01, 0.01, mixer)
+  private val clipFactory = new ClipFactory(amplitude, frequency, charRate, rate, 0.01, 0.01, sampleRate, mixer)
 
   def playString(s: String): Unit =
     val clip = clipFactory.createClip(s)

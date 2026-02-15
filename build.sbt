@@ -4,7 +4,7 @@ lazy val morsePlayer = (project in file("."))
   .settings(
     name := "morse-player",
     organization := "us.keatley.morse",
-    version := "1.0.0",
+    version := "1.0.1",
     scalaVersion := "3.7.4",
     libraryDependencies ++= Seq(
       "jline" % "jline" % "2.14.6",
