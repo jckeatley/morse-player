@@ -18,6 +18,9 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, Promise}
 import scala.io.Source
+import java.io.{BufferedInputStream, FileNotFoundException}
+import java.util.MissingResourceException
+import java.util.zip.GZIPInputStream
 import javax.sound.sampled.*
 
 import jline.console.ConsoleReader
@@ -41,6 +44,7 @@ object MorsePlayer:
     val digits = params.contains("DIGITS")
     val punctuation = params.contains("PUNCT")
     val quiz = params.contains("QUIZ")
+    val dictFile = params.get("DICTFILE").asInstanceOf[Option[String]]
     val sampleRate = params.getOrElse("SAMPLERATE", 44100.0).asInstanceOf[Double]
     val mixerName = params.get("MIXER").asInstanceOf[Option[String]]
     val consoleReader = new ConsoleReader()
@@ -72,7 +76,15 @@ object MorsePlayer:
               if (genRandom)
                 new RandomWordGenerator(maxLength.getOrElse(8), minLength.getOrElse(2), letters, digits, punctuation)
               else
-                new DictWordGenerator("english.dict.gz", maxLength, minLength)
+                val source =
+                  dictFile.map(Source.fromFile).getOrElse {
+                    val path = "english.dict.gz"
+                    val is = getClass.getResourceAsStream(path)
+                    if (is == null)
+                      throw new MissingResourceException(s"Cannot load resource: $path", getClass.getName, path)
+                    Source.fromInputStream(new BufferedInputStream(new GZIPInputStream(is)))
+                  }
+                new DictWordGenerator(source, maxLength, minLength)
             wordGenerator.genWords(count)
 
         if (quiz)
@@ -134,6 +146,8 @@ object MorsePlayer:
         parseArgs(rest, accum + ("PUNCT" -> true))
       case ("-q" | "--quiz") :: rest =>
         parseArgs(rest, accum + ("QUIZ" -> true))
+      case ("-d" | "--dictionary") :: dictFile :: rest =>
+        parseArgs(rest, accum + ("DICTFILE" -> dictFile))
       case ("-f" | "--file") :: file :: rest =>
         parseArgs(rest, accum + ("FILE" -> file))
       case ("-s" | "--samplerate") :: sampleRate :: rest =>
@@ -169,6 +183,7 @@ object MorsePlayer:
         |   -D | --digits                - Include digits in the random words [false].
         |   -p | --punctuation           - Include punctuation in the random words [false].
         |   -q | --quiz                  - Present a quiz.
+        |   -d | --dictionary <dictfile> - The list of words to load [default: built-in dictionary].
         |   -f | --file <file>           - Input file, '-' for stdin.
         |   -s | --samplerate <srate>    - Sample rate [44100.0]
         |   -x | --mixer <mixer-name>    - The name of the mixer to use.

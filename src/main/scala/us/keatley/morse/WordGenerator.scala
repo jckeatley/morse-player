@@ -14,31 +14,36 @@
 
 package us.keatley.morse
 
+import scala.annotation.tailrec
 import scala.io.Source
 import scala.util.Random
-import java.io.BufferedInputStream
-import java.util.MissingResourceException
-import java.util.zip.GZIPInputStream
 
 trait WordGenerator:
   def genWords(count: Int): Seq[String]
 
-class DictWordGenerator(path: String, maxLength: Option[Int], minLength: Option[Int]) extends WordGenerator:
+class DictWordGenerator(source: Source, maxLength: Option[Int], minLength: Option[Int]) extends WordGenerator:
   private lazy val dictionary: IndexedSeq[String] = loadDictionary()
   private lazy val random = new Random
 
   override def genWords(count: Int): Seq[String] =
-    (1 to count).map(_ => selectWord())
+    @tailrec
+    def buildWords(words: Seq[String], wordSet: Set[String]): Seq[String] =
+      if (words.length < count)
+        val word = selectWord()
+        if (wordSet.contains(word))
+          buildWords(words, wordSet)
+        else
+          buildWords(word +: words, wordSet + word)
+      else
+        words
+
+    buildWords(Nil, Set.empty[String])
 
   /**
    * Loads the dictionary resource.
    */
   private def loadDictionary(): IndexedSeq[String] =
-    val is = getClass.getClassLoader.getResourceAsStream(path)
-    if (is == null)
-      throw new MissingResourceException(s"Cannot load resource: $path", getClass.getName, path)
-    val src = Source.fromInputStream(new GZIPInputStream(new BufferedInputStream(is)))
-    val words = src.getLines().filter(w => minLength.forall(w.length >= _) && maxLength.forall(w.length <= _))
+    val words = source.getLines().filter(w => minLength.forall(w.length >= _) && maxLength.forall(w.length <= _))
     words.toIndexedSeq
 
   private def selectWord(): String =
@@ -54,8 +59,8 @@ class RandomWordGenerator(maxLength: Int, minLength: Int, letters: Boolean, numb
     (1 to count).map(_ => genWord())
 
   private def genCharList(): Seq[Char] =
-    (if (letters || !(letters || numbers || punctuation)) ('A' to 'Z') else Seq.empty) ++
-    (if (numbers) ('0' to '9') else Seq.empty) ++
+    (if (letters || !(letters || numbers || punctuation)) 'A' to 'Z' else Seq.empty) ++
+    (if (numbers) '0' to '9' else Seq.empty) ++
     (if (punctuation) Seq('.', ',', '?', '\'', '!', '/', '(', ')', '&',
                           ':', ';', '=', '+', '-', '_', '\"', '$', '@') else Seq.empty)
 
