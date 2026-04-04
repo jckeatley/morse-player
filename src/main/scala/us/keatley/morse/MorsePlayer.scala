@@ -79,7 +79,8 @@ object MorsePlayer:
                 val source =
                   dictFile.map(Source.fromFile).getOrElse {
                     val path = "english.dict.gz"
-                    val is = getClass.getResourceAsStream(path)
+                    val classLoader = getClass.getClassLoader
+                    val is = classLoader.getResourceAsStream(path)
                     if (is == null)
                       throw new MissingResourceException(s"Cannot load resource: $path", getClass.getName, path)
                     Source.fromInputStream(new BufferedInputStream(new GZIPInputStream(is)))
