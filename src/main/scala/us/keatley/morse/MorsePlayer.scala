@@ -103,11 +103,15 @@ object MorsePlayer:
               StandardQuiz(morsePlayer, consoleReader, wordList)
           quiz.runQuiz()
         else
+          /*
           for
             word <- wordList
           do
             morsePlayer.playString(word + " ")
             Await.ready(morsePlayer.completed(), Duration.Inf)
+           */
+          morsePlayer.playString(wordList.mkString(" "))
+          Await.ready(morsePlayer.completed(), Duration.Inf)
         end if
       end if
     end if

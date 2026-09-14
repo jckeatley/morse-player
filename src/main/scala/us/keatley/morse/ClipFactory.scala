@@ -39,7 +39,7 @@ class ClipFactory(amplitude: Double, frequency: Double, charRate: Double, rate: 
   import Element.*
 
   private val ditLength: Double = 1.2/charRate
-  private val fditLength: Double = (300.0*charRate - 186.0*rate)/(95.0*charRate*rate)
+  private val fditLength: Double = (60.0*charRate - 37.2*rate)/(19.0*charRate*rate)
 
   private val morseMap: Map[Char, List[Element]] = Map(
     '.' -> List(DIT, SP, DAH, SP, DIT, SP, DAH, SP, DIT, SP, DAH, FSP, FSP, FSP),           // . _ . _ . _
