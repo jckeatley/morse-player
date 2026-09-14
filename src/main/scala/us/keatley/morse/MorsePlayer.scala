@@ -18,7 +18,7 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, Promise}
 import scala.io.Source
-import java.io.{BufferedInputStream, FileNotFoundException}
+import java.io.BufferedInputStream
 import java.util.MissingResourceException
 import java.util.zip.GZIPInputStream
 import javax.sound.sampled.*
@@ -44,6 +44,7 @@ object MorsePlayer:
     val digits = params.contains("DIGITS")
     val punctuation = params.contains("PUNCT")
     val quiz = params.contains("QUIZ")
+    val fuzzy = params.contains("FUZZY")
     val dictFile = params.get("DICTFILE").asInstanceOf[Option[String]]
     val sampleRate = params.getOrElse("SAMPLERATE", 44100.0).asInstanceOf[Double]
     val mixerName = params.get("MIXER").asInstanceOf[Option[String]]
@@ -51,9 +52,12 @@ object MorsePlayer:
     val mixerInfos = AudioSystem.getMixerInfo
     val mixerInfo = mixerName.flatMap(nm => mixerInfos.find(p => p.getName == nm))
       .orElse(mixerInfos.find(mi => mi.getName.contains("[default]")))
+    val aTime = params.getOrElse("ATIME", 0.002).asInstanceOf[Double]
+    val dTime = params.getOrElse("DTIME", 0.002).asInstanceOf[Double]
     val verboseFlag = params.contains("VERBOSE")
     val showVersion = params.contains("VERSION")
-    val morsePlayer = new MorsePlayer(1.0, tone, if (rate > charRate) rate else charRate, rate, sampleRate, mixerInfo)
+    val morsePlayer = new MorsePlayer(1.0, tone, if (rate > charRate) rate else charRate, rate, sampleRate, aTime,
+      dTime, mixerInfo)
 
     if (showVersion)
       val pkg = getClass.getClassLoader.getDefinedPackage("us.keatley.morse")
@@ -89,29 +93,15 @@ object MorsePlayer:
             wordGenerator.genWords(count)
 
         if (quiz)
-          var score = 0
-          val statusColumn = wordList.map(_.length).max + 6
-
           if (verboseFlag)
-            println(s"Word rate: ${rate} wpm, Character rate: ${charRate} wpm")
+            println(s"Word rate: $rate wpm, Character rate: $charRate wpm")
 
-          for
-            (word, n) <- wordList.zipWithIndex
-          do
-            morsePlayer.playString(word)
-            Await.ready(morsePlayer.completed(), Duration.Inf)
-            val prompt = s"${n + 1}: "
-            val input = consoleReader.readLine(prompt)
-            consoleReader.getOutput.write(s"\u001b[A\u001b[${statusColumn}G   \u001b[K")
-            if (input.compareToIgnoreCase(word) == 0)
-              consoleReader.getOutput.write(s"${Console.GREEN}Correct!${Console.RESET}")
-              score += 1
+          val quiz =
+            if (fuzzy)
+              FuzzyQuiz(morsePlayer, consoleReader, wordList)
             else
-              consoleReader.getOutput.write(s"${Console.RED}Wrong!${Console.RESET} -- $word")
-            consoleReader.println()
-            consoleReader.flush()
-
-          println(s"Score: $score/$count")
+              StandardQuiz(morsePlayer, consoleReader, wordList)
+          quiz.runQuiz()
         else
           for
             word <- wordList
@@ -153,8 +143,14 @@ object MorsePlayer:
         parseArgs(rest, accum + ("FILE" -> file))
       case ("-s" | "--samplerate") :: sampleRate :: rest =>
         parseArgs(rest, accum + ("SAMPLERATE" -> sampleRate.toDouble))
-      case ("-x" | "--mixer") :: mixer :: rest =>
+      case "--fuzzy" :: rest =>
+        parseArgs(rest, accum + ("FUZZY" -> true))
+      case "--mixer" :: mixer :: rest =>
         parseArgs(rest, accum + ("MIXER" -> mixer))
+      case "--attacktime" :: atime :: rest =>
+        parseArgs(rest, accum + ("ATIME" -> atime.toDouble))
+      case "--decaytime" :: dtime :: rest =>
+        parseArgs(rest, accum + ("DTIME" -> dtime.toDouble))
       case "--verbose" :: rest =>
         parseArgs(rest, accum + ("VERBOSE" -> true))
       case "--version" :: rest =>
@@ -187,7 +183,10 @@ object MorsePlayer:
         |   -d | --dictionary <dictfile> - The list of words to load [default: built-in dictionary].
         |   -f | --file <file>           - Input file, '-' for stdin.
         |   -s | --samplerate <srate>    - Sample rate [44100.0]
-        |   -x | --mixer <mixer-name>    - The name of the mixer to use.
+        |   --fuzzy                      - Use fuzzy comparison of answers.
+        |   --mixer <mixer-name>         - The name of the mixer to use.
+        |   --attacktime <atime>         - Attack time (seconds) [0.002]
+        |   --decaytime <dtime>          - Decay time (seconds) [0.002]
         |   --verbose                    - Show more details.
         |   --version                    - Display the app version.
         |   --help                       - This help text.""".stripMargin)
@@ -200,12 +199,14 @@ object MorsePlayer:
   * @param charRate The rate of each individual character (words/minute)
   * @param rate The overall rate of Morse characters (words/minute)
   * @param sampleRate The sample rate of the digital audio
+  * @param attackTime The attack time (seconds)
+  * @param decayTime The decay time (seconds)
   * @param mixer The mixer to play the audio through
   */
-class MorsePlayer(amplitude: Double, frequency: Double, charRate: Double, rate: Double, sampleRate: Double, mixer: Option[Mixer.Info] = None)
-    extends LineListener:
-  private var promise: Promise[MorsePlayer] = Promise[MorsePlayer]
-  private val clipFactory = new ClipFactory(amplitude, frequency, charRate, rate, 0.01, 0.01, sampleRate, mixer)
+class MorsePlayer(amplitude: Double, frequency: Double, charRate: Double, rate: Double, sampleRate: Double,
+                  attackTime: Double, decayTime: Double, mixer: Option[Mixer.Info] = None) extends LineListener:
+  private var promise: Promise[MorsePlayer] = Promise[MorsePlayer]()
+  private val clipFactory = new ClipFactory(amplitude, frequency, charRate, rate, attackTime, decayTime, sampleRate, mixer)
 
   def playString(s: String): Unit =
     val clip = clipFactory.createClip(s)
@@ -220,6 +221,6 @@ class MorsePlayer(amplitude: Double, frequency: Double, charRate: Double, rate: 
       if (line.isOpen)
         line.close()
       promise.success(this)
-      promise = Promise[MorsePlayer]
+      promise = Promise[MorsePlayer]()
 
   def completed(): Future[MorsePlayer] = promise.future
