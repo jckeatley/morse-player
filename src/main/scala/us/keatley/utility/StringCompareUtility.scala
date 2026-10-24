@@ -12,7 +12,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-package us.keatley.morse
+package us.keatley.utility
 
 object StringCompareUtility:
   def damerauLevenshtein(a: String, b: String): Int =

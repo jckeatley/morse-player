@@ -12,9 +12,10 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-package us.keatley.morse
+package us.keatley.utility
 
 import org.scalatest.flatspec.AnyFlatSpec
+import us.keatley.utility.StringCompareUtility
 
 class StringCompareUtilitySpec extends AnyFlatSpec:
   "StringCompareUtility" should "return 0" in:

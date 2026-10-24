@@ -107,31 +107,50 @@ class ClipFactory(amplitude: Double, frequency: Double, charRate: Double, rate: 
     sampleRate.toFloat, true)
   private val timeBase: TimeBase = TimeBase(sampleRate)
   private val pulseTrain: PulseTrain = PulseTrain(attackTime, decayTime)
-  private var clipCache = Map.empty[Char, Clip]
 
   def createClip(s: String): Clip =
-    createClipFromIntStream(createMorseStream(s.map(_.toUpper).flatMap(morseMap.get).flatten.toList))
+    val elements: List[Element] = s.map(_.toUpper).flatMap(morseMap.get).flatten.toList
+    val morseStream: LazyList[Int] = createMorseStream(elements)
+    createClipFromIntStream(morseStream)
 
-  def createClip(c: Char): Option[Clip] =
-    val uc = c.toUpper
-    clipCache.get(uc) match
-      case Some(clip) => Some(clip)
-      case _ =>
-        morseMap.get(uc) match
-          case Some(elems) =>
-            val clip = createClipFromIntStream(createMorseStream(elems))
-            clipCache = clipCache + (uc -> clip)
-            Some(clip)
-          case _ => None
-        end match
-    end match
+  /**
+   * Generate a clip from the list of samples calculated by the earlier stages.
+   * @param values The list of samples.
+   * @return The generated clip
+   */
+  private def createClipFromIntStream(values: LazyList[Int]): Clip =
+    val baos: ByteArrayOutputStream = new ByteArrayOutputStream
+    val dos: DataOutputStream = new DataOutputStream(baos)
+    values.foreach(value => dos.writeShort(value.toShort))
+    dos.flush()
+    dos.close()
+    val buffer: Array[Byte] = baos.toByteArray
+    val clip: Clip = mixer.map(AudioSystem.getClip).getOrElse(AudioSystem.getClip)
+    clip.open(format, buffer, 0, buffer.length)
+    clip
 
+  /**
+   * Creates a list of quantized signal values, given a list of Morse elements
+   * (dit, dah, etc.).  Takes the sine signal and multiplies it by an appropriate
+   * pulse train to generate the pulses of the morse signal.  Quantizes the result
+   * to discrete integer values in the output range.
+   * @param elems The list of morse elements to generate a signal for.
+   * @return The series of signal values.
+   */
   private def createMorseStream(elems: List[Element]): LazyList[Int] =
     val ampStream: Constant[Double] = new Constant[Double](amplitude)
     val analogStream: LazyList[Double] = Multiplier(sineSeries(timeBase),
       Multiplier(pulseTrain(elemsToTiming(elems), timeBase), ampStream.output))
     quantizerMapper(analogStream)
 
+  /**
+   * Takes a series of Morse elements and generates a series of 3-tuples, consisting of a boolean
+   * which is {@code true} if the tone is on, the start time of the tone, and the end time of
+   * the tone.  It uses the calculated values of ditLength and fditLength.
+   * @param elems The list of input elements.
+   * @param start The start time of the stream.
+   * @return The list of 3-tuples representing the pulse train.
+   */
   private def elemsToTiming(elems: List[Element], start: Double = 0.0): LazyList[(Boolean, Double, Double)] =
     elems match
       case DIT :: rest =>
@@ -145,17 +164,6 @@ class ClipFactory(amplitude: Double, frequency: Double, charRate: Double, rate: 
       case _ =>
         LazyList()
     end match
-
-  private def createClipFromIntStream(values: LazyList[Int]): Clip =
-    val baos: ByteArrayOutputStream = new ByteArrayOutputStream
-    val dos: DataOutputStream = new DataOutputStream(baos)
-    values.foreach(value => dos.writeShort(value.toShort))
-    dos.flush()
-    dos.close()
-    val buffer: Array[Byte] = baos.toByteArray
-    val clip: Clip = mixer.map(AudioSystem.getClip).getOrElse(AudioSystem.getClip)
-    clip.open(format, buffer, 0, buffer.length)
-    clip
 
   def printSamples[T](stream: LazyList[T], count: Int): Unit =
     stream.take(count).foreach(println)

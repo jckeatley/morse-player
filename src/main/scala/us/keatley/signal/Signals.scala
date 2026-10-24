@@ -140,25 +140,6 @@ class PulseFunction(val pulseLength: Time, val attackTime: Time, val decayTime: 
   def isInRange(time: Time): Boolean =
     time >= startTime && time < startTime + pulseLength
 
-class PulseTrain2:
-  def apply(pulses: LazyList[PulseFunction], timeBase: TimeBase): LazyList[Double] =
-    pulseTrain(pulses, timeBase.output)
-
-  def pulseTrain(pulses: LazyList[PulseFunction], timeSeries: LazyList[Time]): LazyList[Double] =
-    timeSeries match
-      case time #:: timeBaseRest =>
-        pulses match
-          case pulse #:: pulsesRest if (pulse.isFuture(time)) =>
-            0.0 #:: pulseTrain(pulses, timeBaseRest)
-          case pulse #:: pulsesRest if (pulse.isInRange(time)) =>
-            pulse(time) #:: pulseTrain(pulses, timeBaseRest)
-          case pulse #:: pulsesRest =>
-            pulseTrain(pulsesRest, timeBaseRest)
-          case LazyList() =>
-            LazyList()
-      case _ =>
-        LazyList()
-
 class PulseTrain(attackTime: Double, decayTime: Double):
   def apply(toneStartEnd: LazyList[(Boolean, Double, Double)], timeBase: TimeBase): LazyList[Double] =
     toneStartEnd match
@@ -206,5 +187,34 @@ class Quantizer(minInput: Double, maxInput: Double, outRange: Range) extends (Do
     } else {
       out
     }
+
+/**
+ * A pulse function, with pulse length, attack time, and decay time.  Attack and decay are linear changes
+ * from 0 to 1 and back again.  Amplitude is 1.0.
+ *
+ * @param pulseLength The total length of the pulse, including attack and decay
+ * @param attackTime  The length of time it takes for the amplitude to increase from 0 to 1
+ * @param decayTime   The length of time it takes for the amplitude to decrease from 1 to 0
+ * @param startTime   The start time of the pulse.
+ */
+class PulseFunction2(val pulseLength: Time, val attackTime: Time, val decayTime: Time, val startTime: Time = 0.0D)
+  extends TimeFunction:
+  private val dRamp = attackTime/4.0
+
+  override def apply(time: Time): Double =
+    val lTime = time - startTime
+    if (lTime >= 0.0 && lTime < attackTime)
+      lTime / attackTime
+    else if (lTime >= attackTime && lTime < (pulseLength - decayTime))
+      1.0
+    else if (lTime >= (pulseLength - decayTime) && lTime < pulseLength)
+      (pulseLength - lTime) / decayTime
+    else
+      0.0
+
+  def isFuture(time: Time): Boolean = time < startTime
+
+  def isInRange(time: Time): Boolean =
+    time >= startTime && time < startTime + pulseLength
 
 // vi:set ts=4 sw=4 noet:

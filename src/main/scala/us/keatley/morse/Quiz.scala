@@ -16,8 +16,10 @@ package us.keatley.morse
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import java.text.DecimalFormat
 
 import jline.console.ConsoleReader
+import us.keatley.utility.StringCompareUtility
 
 abstract class Quiz(morsePlayer: MorsePlayer, consoleReader: ConsoleReader, wordList: Seq[String]):
   def runQuiz(): Unit =
@@ -59,6 +61,7 @@ class StandardQuiz(morsePlayer: MorsePlayer, consoleReader: ConsoleReader, wordL
 
 class FuzzyQuiz(morsePlayer: MorsePlayer, consoleReader: ConsoleReader, wordList: Seq[String])
   extends Quiz(morsePlayer: MorsePlayer, consoleReader: ConsoleReader, wordList: Seq[String]):
+  private val decFmt = new DecimalFormat("0.000")
   private var fuzzyScore: Double = 0.0
 
   override def scoreWord(word: String, guessedWord: String): Unit =
@@ -72,4 +75,4 @@ class FuzzyQuiz(morsePlayer: MorsePlayer, consoleReader: ConsoleReader, wordList
     fuzzyScore += diff
 
   override def printScore(): Unit =
-    println(s"Score: $fuzzyScore/${wordList.length}")
+    println(s"Score: ${decFmt.format(fuzzyScore)}/${wordList.length}")
