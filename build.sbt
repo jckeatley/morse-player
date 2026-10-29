@@ -14,12 +14,17 @@
 
 enablePlugins(JavaAppPackaging)
 
+val jvmVersion = "17"
+
+Compile / scalacOptions ++= Seq("-java-output-version", jvmVersion)
+Compile / javacOptions ++= Seq("--release", jvmVersion, "-target", jvmVersion)
+
 lazy val morsePlayer = (project in file("."))
   .settings(
     name := "morse-player",
     maintainer := "jckeatley@gmail.com",
     organization := "us.keatley.morse",
-    version := "1.0.5",
+    version := "1.0.6",
     scalaVersion := "3.9.0",
     libraryDependencies ++= Seq(
       "jline" % "jline" % "2.14.6",
